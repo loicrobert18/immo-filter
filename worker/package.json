@@ -1,0 +1,33 @@
+{
+  "name": "immofilter-worker",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch --env-file=../.env src/index.ts",
+    "build": "tsc",
+    "start": "node --env-file=../.env dist/index.js",
+    "test": "vitest",
+    "lint": "eslint src/"
+  },
+  "dependencies": {
+    "cheerio": "^1.0.0",
+    "dotenv": "^16.4.7",
+    "drizzle-orm": "^0.38.0",
+    "imapflow": "^1.0.171",
+    "mailparser": "^3.7.2",
+    "node-cron": "^3.0.3",
+    "nodemailer": "^6.9.16",
+    "postgres": "^3.4.5"
+  },
+  "devDependencies": {
+    "@types/mailparser": "^3.4.5",
+    "@types/node": "^22.10.0",
+    "@types/node-cron": "^3.0.11",
+    "@types/nodemailer": "^6.4.17",
+    "drizzle-kit": "^0.30.0",
+    "eslint": "^9.16.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.0",
+    "vitest": "^2.1.0"
+  }
+}

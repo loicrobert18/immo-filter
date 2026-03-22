@@ -1,0 +1,26 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: immofilter
+      POSTGRES_USER: immofilter
+      POSTGRES_PASSWORD: immofilter
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+
+  worker:
+    build:
+      context: ./worker
+    restart: unless-stopped
+    env_file:
+      - .env
+    depends_on:
+      - postgres
+    volumes:
+      - ./data:/app/data
+
+volumes:
+  pgdata:
