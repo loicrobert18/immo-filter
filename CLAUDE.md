@@ -113,4 +113,4 @@ interface Listing {
 
 ## Contexte projet
 
-Ce projet tourne sur un VPS Hetzner (Debian 13, US) aux côtés d'autres services. Le PostgreSQL peut être mutualisé (DB séparée `immofilter`) ou isolé dans son propre container selon la config. Le mail dédié est un compte Gmail ou domaine perso accessible en IMAP.
+Ce projet tourne sur un VPS (Debian 13) aux côtés d'autres services. Le PostgreSQL peut être mutualisé (DB séparée `immofilter`) ou isolé dans son propre container selon la config. Le mail dédié est un compte Gmail ou domaine perso accessible en IMAP.
