@@ -5,6 +5,7 @@ export interface Listing {
   rooms: number | null;
   city: string | null;
   address: string | null;
+  imageUrl: string | null;
   platform: string;
   dedupHash: string;
   detectedAt: Date;

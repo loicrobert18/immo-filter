@@ -10,6 +10,7 @@ function makeListing(overrides: Partial<Listing> = {}): Listing {
     rooms: 3,
     city: "Paris",
     address: null,
+    imageUrl: null,
     platform: "seloger",
     dedupHash: "",
     detectedAt: new Date(),

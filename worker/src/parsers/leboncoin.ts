@@ -38,6 +38,7 @@ export const leboncoinParser: BaseParser = {
         rooms: rooms ? Number(rooms) : null,
         city,
         address: null,
+        imageUrl: null,
         platform: "leboncoin",
         dedupHash: "",
         detectedAt: new Date(),

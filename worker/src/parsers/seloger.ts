@@ -43,6 +43,17 @@ export const selogerParser: BaseParser = {
       const cityMatch = text.match(/([A-ZÀ-Üa-zà-ü][\w\sà-üÀ-Ü'-]+)\s*\(\d{5}\)/);
       const city = cityMatch?.[1]?.trim() ?? null;
 
+      // Image: real photo is a background-image on a <td> (mms.seloger.com URL)
+      let imageUrl: string | null = null;
+      container.find("td[style*='background-image']").each((_j, td) => {
+        if (imageUrl) return;
+        const style = $(td).attr("style") || "";
+        const bgMatch = style.match(/url\(['"]?(https?:\/\/[^'")\s]+)['"]?\)/);
+        if (bgMatch?.[1]) {
+          imageUrl = bgMatch[1];
+        }
+      });
+
       const listing: Listing = {
         url,
         price: price ? Number(price) : null,
@@ -50,6 +61,7 @@ export const selogerParser: BaseParser = {
         rooms: rooms ? Number(rooms) : null,
         city,
         address: null,
+        imageUrl,
         platform: "seloger",
         dedupHash: "",
         detectedAt: new Date(),

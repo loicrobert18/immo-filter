@@ -39,6 +39,7 @@ export async function filterNewListings(
         rooms: listing.rooms,
         city: listing.city,
         address: listing.address,
+        imageUrl: listing.imageUrl,
         platform: listing.platform,
         dedupHash: listing.dedupHash,
         detectedAt: listing.detectedAt,

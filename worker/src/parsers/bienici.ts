@@ -38,6 +38,7 @@ export const bieniciParser: BaseParser = {
         rooms: rooms ? Number(rooms) : null,
         city,
         address: null,
+        imageUrl: null,
         platform: "bienici",
         dedupHash: "",
         detectedAt: new Date(),

@@ -38,6 +38,7 @@ export const papParser: BaseParser = {
         rooms: rooms ? Number(rooms) : null,
         city,
         address: null,
+        imageUrl: null,
         platform: "pap",
         dedupHash: "",
         detectedAt: new Date(),

@@ -19,8 +19,22 @@ function getTransport() {
   });
 }
 
-function formatListingHtml(listing: Listing): string {
+async function downloadImage(url: string): Promise<Buffer | null> {
+  try {
+    const response = await fetch(url);
+    if (!response.ok) return null;
+    return Buffer.from(await response.arrayBuffer());
+  } catch {
+    return null;
+  }
+}
+
+function formatListingHtml(listing: Listing, index: number): string {
+  const imageTag = listing.imageUrl
+    ? `<img src="cid:listing-${index}" width="270" style="border-radius:8px; margin-bottom:12px; display:block;">`
+    : "";
   const parts = [
+    imageTag,
     `<h3><a href="${listing.url}">${listing.platform}</a></h3>`,
     `<ul>`,
     listing.price != null ? `<li>Prix : ${listing.price.toLocaleString("fr-FR")} €</li>` : "",
@@ -43,8 +57,24 @@ export async function sendNotification(newListings: Listing[]): Promise<void> {
     throw new Error("NOTIFY_TO and NOTIFY_FROM are required");
   }
 
+  const attachments: { filename: string; content: Buffer; cid: string }[] = [];
+
+  for (let i = 0; i < newListings.length; i++) {
+    const listing = newListings[i]!;
+    if (!listing.imageUrl) continue;
+
+    const imageData = await downloadImage(listing.imageUrl);
+    if (!imageData) continue;
+
+    attachments.push({
+      filename: `listing-${i}.png`,
+      content: imageData,
+      cid: `listing-${i}`,
+    });
+  }
+
   const transport = getTransport();
-  const html = newListings.map(formatListingHtml).join("<hr>\n");
+  const html = newListings.map((l, i) => formatListingHtml(l, i)).join("<hr>\n");
 
   try {
     await transport.sendMail({
@@ -52,6 +82,7 @@ export async function sendNotification(newListings: Listing[]): Promise<void> {
       to,
       subject: `ImmoFilter : ${newListings.length} nouvelle(s) annonce(s)`,
       html,
+      attachments,
     });
     console.log(`[Notify] Sent ${newListings.length} listing(s) to ${to}`);
   } catch (error) {
