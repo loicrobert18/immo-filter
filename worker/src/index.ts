@@ -80,14 +80,14 @@ async function processMails(): Promise<void> {
   }
 }
 
-// Run every 30 minutes
-cron.schedule("*/30 * * * *", () => {
+// Run every day at 8:00 AM
+cron.schedule("0 8 * * *", () => {
   processMails().catch((error) =>
     console.error("[Cron] Unhandled error:", error)
   );
 });
 
-console.log("[ImmoFilter] Worker started, scheduling every 30 minutes");
+console.log("[ImmoFilter] Worker started, scheduling every day at 8:00 AM");
 
 // Run once on startup
 processMails().catch((error) =>
