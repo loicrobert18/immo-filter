@@ -1,7 +1,8 @@
-import { pgTable, text, integer, real, timestamp, varchar } from "drizzle-orm/pg-core";
+import { pgTable, text, integer, real, timestamp, varchar, serial } from "drizzle-orm/pg-core";
 
 export const listings = pgTable("listings", {
-  url: text("url").primaryKey(),
+  id: serial("id").primaryKey(),
+  url: text("url").notNull().unique(),
   title: text("title"),
   price: integer("price"),
   surface: real("surface"),

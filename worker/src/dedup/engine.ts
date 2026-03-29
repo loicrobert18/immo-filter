@@ -32,7 +32,7 @@ export async function filterNewListings(
         continue;
       }
 
-      await db.insert(listings).values({
+      const [inserted] = await db.insert(listings).values({
         url: listing.url,
         title: listing.title,
         price: listing.price,
@@ -44,9 +44,9 @@ export async function filterNewListings(
         platform: listing.platform,
         dedupHash: listing.dedupHash,
         detectedAt: listing.detectedAt,
-      });
+      }).returning({ id: listings.id });
 
-      newListings.push(listing);
+      newListings.push({ ...listing, id: inserted?.id });
     } catch (error) {
       console.error(`[Dedup] Error processing listing ${listing.url}:`, error);
     }

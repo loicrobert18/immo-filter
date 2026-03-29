@@ -1,9 +1,11 @@
 import "dotenv/config";
 import cron from "node-cron";
-import { fetchNewMails } from "./imap/client.js";
+import { fetchNewMails, startSaveListener } from "./imap/client.js";
 import { findParser } from "./parsers/registry.js";
 import { filterNewListings } from "./dedup/engine.js";
 import { sendNotification } from "./notify/mailer.js";
+import { isSaveRequest, processSaveRequests } from "./save/handler.js";
+import type { RawMail } from "./imap/client.js";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { Listing } from "./types/listing.js";
@@ -31,11 +33,13 @@ async function processMails(): Promise<void> {
     return;
   }
 
-  console.log(`[Pipeline] Fetched ${mails.length} new mail(s)`);
+  // Filter out SAVE requests — handled by the IMAP IDLE listener
+  const alertMails = mails.filter((m: RawMail) => !isSaveRequest(m));
+  console.log(`[Pipeline] Fetched ${mails.length} mail(s), ${alertMails.length} alert(s)`);
 
   const allListings: Listing[] = [];
 
-  for (const mail of mails) {
+  for (const mail of alertMails) {
     try {
       const parser = findParser(mail.from);
       if (!parser) {
@@ -92,4 +96,9 @@ console.log("[ImmoFilter] Worker started, scheduling every day at 8:00 AM");
 // Run once on startup
 processMails().catch((error) =>
   console.error("[Startup] Unhandled error:", error)
+);
+
+// Listen for SAVE requests in real-time via IMAP IDLE
+startSaveListener((mails) => processSaveRequests(mails)).catch((error) =>
+  console.error("[IMAP-IDLE] Unhandled error:", error)
 );
