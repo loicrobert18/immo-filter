@@ -1,5 +1,6 @@
 export interface Listing {
   url: string;
+  title: string | null;
   price: number | null;
   surface: number | null;
   rooms: number | null;

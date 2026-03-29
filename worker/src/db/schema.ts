@@ -2,6 +2,7 @@ import { pgTable, text, integer, real, timestamp, varchar } from "drizzle-orm/pg
 
 export const listings = pgTable("listings", {
   url: text("url").primaryKey(),
+  title: text("title"),
   price: integer("price"),
   surface: real("surface"),
   rooms: integer("rooms"),

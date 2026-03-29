@@ -43,6 +43,13 @@ export const selogerParser: BaseParser = {
       const cityMatch = text.match(/([A-ZÀ-Üa-zà-ü][\w\sà-üÀ-Ü'-]+)\s*\(\d{5}\)/);
       const city = cityMatch?.[1]?.trim() ?? null;
 
+      // Title: look for a bold/strong text in the container that describes the listing
+      const titleEl = container.find("strong, b").filter((_j, strong) => {
+        const t = $(strong).text().trim();
+        return t.length > 10 && !t.match(/^\d/) && !t.includes("€");
+      }).first();
+      const title = titleEl.length > 0 ? titleEl.text().trim() : null;
+
       // Image: real photo is a background-image on a <td> (mms.seloger.com URL)
       let imageUrl: string | null = null;
       container.find("td[style*='background-image']").each((_j, td) => {
@@ -56,6 +63,7 @@ export const selogerParser: BaseParser = {
 
       const listing: Listing = {
         url,
+        title,
         price: price ? Number(price) : null,
         surface: surface ? Number(surface) : null,
         rooms: rooms ? Number(rooms) : null,

@@ -25,7 +25,9 @@ export const leboncoinParser: BaseParser = {
       const url = $(el).attr("href");
       if (!url) return;
 
-      const text = $(el).closest("tr, td, div").text();
+      const container = $(el).closest("tr, td, div");
+      const text = container.text();
+      const title = $(el).text().trim() || null;
       const price = text.match(/([\d\s]+)\s*€/)?.[1]?.replace(/\s/g, "");
       const surface = text.match(/([\d,]+)\s*m²/)?.[1]?.replace(",", ".");
       const rooms = text.match(/(\d+)\s*pièce/)?.[1];
@@ -33,6 +35,7 @@ export const leboncoinParser: BaseParser = {
 
       const listing: Listing = {
         url: url.split("?")[0] ?? url,
+        title,
         price: price ? Number(price) : null,
         surface: surface ? Number(surface) : null,
         rooms: rooms ? Number(rooms) : null,

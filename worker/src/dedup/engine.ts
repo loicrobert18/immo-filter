@@ -34,6 +34,7 @@ export async function filterNewListings(
 
       await db.insert(listings).values({
         url: listing.url,
+        title: listing.title,
         price: listing.price,
         surface: listing.surface,
         rooms: listing.rooms,

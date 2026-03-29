@@ -29,22 +29,65 @@ async function downloadImage(url: string): Promise<Buffer | null> {
   }
 }
 
+function formatPlatformLabel(platform: string): string {
+  const labels: Record<string, string> = {
+    seloger: "SeLoger",
+    leboncoin: "LeBonCoin",
+    bienici: "Bien'ici",
+    pap: "PAP",
+  };
+  return labels[platform] ?? platform;
+}
+
+function buildFallbackTitle(listing: Listing): string | null {
+  const parts: string[] = [];
+  if (listing.rooms != null) parts.push(`${listing.rooms} pièce${listing.rooms > 1 ? "s" : ""}`);
+  if (listing.surface != null) parts.push(`${listing.surface} m²`);
+  if (listing.city) parts.push(listing.city);
+  return parts.length > 0 ? parts.join(" · ") : null;
+}
+
 function formatListingHtml(listing: Listing, index: number): string {
-  const imageTag = listing.imageUrl
-    ? `<img src="cid:listing-${index}" width="270" style="border-radius:8px; margin-bottom:12px; display:block;">`
+  const platformLabel = formatPlatformLabel(listing.platform);
+
+  const imageSection = listing.imageUrl
+    ? `<a href="${listing.url}" style="text-decoration:none; display:block; position:relative;">
+        <div style="position:relative; width:320px;">
+          <img src="cid:listing-${index}" width="320" style="border-radius:10px; display:block;">
+          <div style="position:absolute; top:0; left:0; right:0; text-align:center; padding:6px 0;">
+            <span style="background:rgba(0,0,0,0.6); color:#fff; font-size:12px; font-weight:600; padding:4px 14px; border-radius:0 0 8px 8px; letter-spacing:0.5px;">
+              ${platformLabel}
+            </span>
+          </div>
+        </div>
+      </a>`
+    : `<div style="background:#f0f0f0; border-radius:10px; width:320px; height:60px; display:flex; align-items:center; justify-content:center;">
+        <span style="color:#888; font-size:13px; font-weight:600;">${platformLabel}</span>
+      </div>`;
+
+  const titleText = listing.title ?? buildFallbackTitle(listing);
+  const title = titleText
+    ? `<a href="${listing.url}" style="text-decoration:none; color:#1a1a1a;">
+        <h3 style="margin:10px 0 6px 0; font-size:16px; font-weight:600;">${titleText}</h3>
+      </a>`
     : "";
-  const parts = [
-    imageTag,
-    `<h3><a href="${listing.url}">${listing.platform}</a></h3>`,
-    `<ul>`,
-    listing.price != null ? `<li>Prix : ${listing.price.toLocaleString("fr-FR")} €</li>` : "",
-    listing.surface != null ? `<li>Surface : ${listing.surface} m²</li>` : "",
-    listing.rooms != null ? `<li>Pièces : ${listing.rooms}</li>` : "",
-    listing.city ? `<li>Ville : ${listing.city}</li>` : "",
-    listing.address ? `<li>Adresse : ${listing.address}</li>` : "",
-    `</ul>`,
-  ];
-  return parts.filter(Boolean).join("\n");
+
+  const details: string[] = [];
+  if (listing.price != null) details.push(`<strong>${listing.price.toLocaleString("fr-FR")} &euro;</strong>`);
+  if (listing.surface != null) details.push(`${listing.surface} m&sup2;`);
+  if (listing.rooms != null) details.push(`${listing.rooms} pi&egrave;ce${listing.rooms > 1 ? "s" : ""}`);
+  if (listing.city) details.push(listing.city);
+  if (listing.address) details.push(listing.address);
+
+  const detailsHtml = details.length > 0
+    ? `<p style="margin:6px 0 0 0; font-size:14px; color:#444; line-height:1.5;">${details.join(" &middot; ")}</p>`
+    : "";
+
+  return `<div style="padding:40px 0;">
+    ${imageSection}
+    ${title}
+    ${detailsHtml}
+  </div>`;
 }
 
 export async function sendNotification(newListings: Listing[]): Promise<void> {
@@ -74,7 +117,12 @@ export async function sendNotification(newListings: Listing[]): Promise<void> {
   }
 
   const transport = getTransport();
-  const html = newListings.map((l, i) => formatListingHtml(l, i)).join("<hr>\n");
+  const separator = `<div style="border-top:1px solid #e0e0e0; margin:8px 0;"></div>`;
+  const listingsHtml = newListings.map((l, i) => formatListingHtml(l, i)).join(separator);
+  const html = `<div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; max-width:400px; margin:0 auto; padding:16px;">
+    <h2 style="font-size:18px; color:#1a1a1a; margin-bottom:8px;">${newListings.length} nouvelle${newListings.length > 1 ? "s" : ""} annonce${newListings.length > 1 ? "s" : ""}</h2>
+    ${listingsHtml}
+  </div>`;
 
   try {
     await transport.sendMail({
