@@ -13,4 +13,5 @@ export const listings = pgTable("listings", {
   platform: varchar("platform", { length: 50 }).notNull(),
   dedupHash: varchar("dedup_hash", { length: 64 }).notNull(),
   detectedAt: timestamp("detected_at", { withTimezone: true }).notNull().defaultNow(),
+  notifiedAt: timestamp("notified_at", { withTimezone: true }),
 });

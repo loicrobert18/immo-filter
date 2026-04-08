@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { eq, isNull } from "drizzle-orm";
 import { db } from "../db/client.js";
 import { listings } from "../db/schema.js";
 import type { Listing } from "../types/listing.js";
@@ -53,4 +53,37 @@ export async function filterNewListings(
   }
 
   return newListings;
+}
+
+export async function getUnnotifiedListings(): Promise<Listing[]> {
+  const rows = await db
+    .select()
+    .from(listings)
+    .where(isNull(listings.notifiedAt));
+
+  return rows.map((row) => ({
+    id: row.id,
+    url: row.url,
+    title: row.title,
+    price: row.price,
+    surface: row.surface,
+    rooms: row.rooms,
+    city: row.city,
+    address: row.address,
+    imageUrl: row.imageUrl,
+    platform: row.platform,
+    dedupHash: row.dedupHash,
+    detectedAt: row.detectedAt,
+  }));
+}
+
+export async function markAsNotified(ids: number[]): Promise<void> {
+  if (ids.length === 0) return;
+
+  for (const id of ids) {
+    await db
+      .update(listings)
+      .set({ notifiedAt: new Date() })
+      .where(eq(listings.id, id));
+  }
 }

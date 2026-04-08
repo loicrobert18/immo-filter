@@ -2,7 +2,7 @@ import "dotenv/config";
 import cron from "node-cron";
 import { fetchNewMails, startSaveListener } from "./imap/client.js";
 import { findParser } from "./parsers/registry.js";
-import { filterNewListings } from "./dedup/engine.js";
+import { filterNewListings, getUnnotifiedListings, markAsNotified } from "./dedup/engine.js";
 import { sendNotification } from "./notify/mailer.js";
 import { isSaveRequest, processSaveRequests } from "./save/handler.js";
 import type { RawMail } from "./imap/client.js";
@@ -75,10 +75,25 @@ async function processMails(): Promise<void> {
     return;
   }
 
+  // Include previously failed notifications
+  try {
+    const unnotified = await getUnnotifiedListings();
+    const newIds = new Set(newListings.map((l) => l.id));
+    const missed = unnotified.filter((l) => !newIds.has(l.id));
+    if (missed.length > 0) {
+      console.log(`[Pipeline] ${missed.length} previously unnotified listing(s) to retry`);
+      newListings.push(...missed);
+    }
+  } catch (error) {
+    console.error("[Pipeline] Error fetching unnotified listings:", error);
+  }
+
   console.log(`[Pipeline] ${newListings.length} new listing(s) after dedup`);
 
   try {
     await sendNotification(newListings);
+    const ids = newListings.map((l) => l.id).filter((id): id is number => id != null);
+    await markAsNotified(ids);
   } catch (error) {
     console.error("[Pipeline] Error sending notification:", error);
   }
