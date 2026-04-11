@@ -1,6 +1,6 @@
 import "dotenv/config";
 import cron from "node-cron";
-import { fetchNewMails, startSaveListener } from "./imap/client.js";
+import { fetchAllMails, deleteMails } from "./imap/client.js";
 import { findParser } from "./parsers/registry.js";
 import { filterNewListings, getUnnotifiedListings, markAsNotified } from "./dedup/engine.js";
 import { sendNotification } from "./notify/mailer.js";
@@ -25,25 +25,40 @@ async function saveFailedHtml(from: string, html: string): Promise<void> {
 async function processMails(): Promise<void> {
   console.log(`[${new Date().toISOString()}] Starting mail processing...`);
 
-  let mails;
+  let mails: RawMail[];
   try {
-    mails = await fetchNewMails();
+    mails = await fetchAllMails();
   } catch (error) {
     console.error("[Pipeline] Error fetching mails:", error);
     return;
   }
 
-  // Filter out SAVE requests — handled by the IMAP IDLE listener
-  const alertMails = mails.filter((m: RawMail) => !isSaveRequest(m));
-  console.log(`[Pipeline] Fetched ${mails.length} mail(s), ${alertMails.length} alert(s)`);
+  const saveMails = mails.filter((m) => isSaveRequest(m));
+  const alertMails = mails.filter((m) => !isSaveRequest(m));
+  console.log(`[Pipeline] Fetched ${mails.length} mail(s): ${alertMails.length} alert(s), ${saveMails.length} save(s)`);
 
+  // Track UIDs of successfully processed mails for deletion
+  const processedUids: number[] = [];
+
+  // --- Process SAVE requests ---
+  if (saveMails.length > 0) {
+    try {
+      await processSaveRequests(saveMails);
+      processedUids.push(...saveMails.map((m) => m.uid));
+    } catch (error) {
+      console.error("[Pipeline] Error processing save requests:", error);
+    }
+  }
+
+  // --- Parse alert mails ---
   const allListings: Listing[] = [];
+  const parsedMailUids: number[] = [];
 
   for (const mail of alertMails) {
     try {
       const parser = findParser(mail.from);
       if (!parser) {
-        console.log(`[Pipeline] No parser found for: ${mail.from}`);
+        // Not an alert mail we recognize — leave it in the inbox
         continue;
       }
 
@@ -51,31 +66,44 @@ async function processMails(): Promise<void> {
       if (parsed.length === 0) {
         console.warn(`[Pipeline] Parser ${parser.platform} returned 0 listings`);
         await saveFailedHtml(mail.from, mail.html);
+        // Still delete — it's a known sender, just a parse failure
+        parsedMailUids.push(mail.uid);
         continue;
       }
 
       console.log(`[Pipeline] ${parser.platform}: parsed ${parsed.length} listing(s)`);
       allListings.push(...parsed);
+      parsedMailUids.push(mail.uid);
     } catch (error) {
       console.error(`[Pipeline] Error parsing mail from ${mail.from}:`, error);
       await saveFailedHtml(mail.from, mail.html);
+      parsedMailUids.push(mail.uid);
     }
   }
 
-  if (allListings.length === 0) {
-    console.log("[Pipeline] No listings found, skipping dedup & notify");
-    return;
+  // --- Dedup & store ---
+  let newListings: Listing[] = [];
+  if (allListings.length > 0) {
+    try {
+      newListings = await filterNewListings(allListings);
+    } catch (error) {
+      console.error("[Pipeline] Error during dedup:", error);
+      return;
+    }
   }
 
-  let newListings: Listing[];
-  try {
-    newListings = await filterNewListings(allListings);
-  } catch (error) {
-    console.error("[Pipeline] Error during dedup:", error);
-    return;
+  // Delete processed mails from IMAP
+  processedUids.push(...parsedMailUids);
+  if (processedUids.length > 0) {
+    try {
+      await deleteMails(processedUids);
+      console.log(`[Pipeline] Deleted ${processedUids.length} processed mail(s)`);
+    } catch (error) {
+      console.error("[Pipeline] Error deleting mails:", error);
+    }
   }
 
-  // Include previously failed notifications
+  // --- Notify (include previously failed notifications) ---
   try {
     const unnotified = await getUnnotifiedListings();
     const newIds = new Set(newListings.map((l) => l.id));
@@ -88,7 +116,12 @@ async function processMails(): Promise<void> {
     console.error("[Pipeline] Error fetching unnotified listings:", error);
   }
 
-  console.log(`[Pipeline] ${newListings.length} new listing(s) after dedup`);
+  if (newListings.length === 0) {
+    console.log("[Pipeline] No new listings to notify");
+    return;
+  }
+
+  console.log(`[Pipeline] ${newListings.length} new listing(s) to notify`);
 
   try {
     await sendNotification(newListings);
@@ -111,9 +144,4 @@ console.log("[ImmoFilter] Worker started, scheduling every day at 8:00 AM");
 // Run once on startup
 processMails().catch((error) =>
   console.error("[Startup] Unhandled error:", error)
-);
-
-// Listen for SAVE requests in real-time via IMAP IDLE
-startSaveListener((mails) => processSaveRequests(mails)).catch((error) =>
-  console.error("[IMAP-IDLE] Unhandled error:", error)
 );
