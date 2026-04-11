@@ -124,9 +124,8 @@ async function processMails(): Promise<void> {
   console.log(`[Pipeline] ${newListings.length} new listing(s) to notify`);
 
   try {
-    await sendNotification(newListings);
-    const ids = newListings.map((l) => l.id).filter((id): id is number => id != null);
-    await markAsNotified(ids);
+    const sentIds = await sendNotification(newListings);
+    await markAsNotified(sentIds);
   } catch (error) {
     console.error("[Pipeline] Error sending notification:", error);
   }

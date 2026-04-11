@@ -96,8 +96,10 @@ export function formatListingHtml(listing: Listing, index: number, saveMailto: s
   </div>`;
 }
 
-export async function sendNotification(newListings: Listing[]): Promise<void> {
-  if (newListings.length === 0) return;
+const BATCH_SIZE = 5;
+
+export async function sendNotification(newListings: Listing[]): Promise<number[]> {
+  if (newListings.length === 0) return [];
 
   const to = process.env["NOTIFY_TO"];
   const from = process.env["NOTIFY_FROM"];
@@ -107,42 +109,60 @@ export async function sendNotification(newListings: Listing[]): Promise<void> {
     throw new Error("NOTIFY_TO and NOTIFY_FROM are required");
   }
 
-  const attachments: { filename: string; content: Buffer; cid: string }[] = [];
-
-  for (let i = 0; i < newListings.length; i++) {
-    const listing = newListings[i]!;
-    if (!listing.imageUrl) continue;
-
-    const imageData = await downloadImage(listing.imageUrl);
-    if (!imageData) continue;
-
-    attachments.push({
-      filename: `listing-${i}.png`,
-      content: imageData,
-      cid: `listing-${i}`,
-    });
-  }
-
   const transport = getTransport();
-  const separator = `<div style="border-top:1px solid #e0e0e0; margin:8px 0;"></div>`;
-  const listingsHtml = newListings.map((l, i) => formatListingHtml(l, i, saveMailto)).join(separator);
-  const html = `<div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; max-width:400px; margin:0 auto; padding:16px;">
-    <h2 style="font-size:18px; color:#1a1a1a; margin-bottom:8px;">${newListings.length} nouvelle${newListings.length > 1 ? "s" : ""} annonce${newListings.length > 1 ? "s" : ""}</h2>
-    ${listingsHtml}
-  </div>`;
+  const sentIds: number[] = [];
 
-  try {
-    await transport.sendMail({
-      from,
-      to,
-      subject: `ImmoFilter : ${newListings.length} nouvelle(s) annonce(s)`,
-      html,
-      attachments,
-    });
-    console.log(`[Notify] Sent ${newListings.length} listing(s) to ${to}`);
-  } catch (error) {
-    console.error("[Notify] Error sending notification:", error);
+  // Split listings into batches
+  const batches: Listing[][] = [];
+  for (let i = 0; i < newListings.length; i += BATCH_SIZE) {
+    batches.push(newListings.slice(i, i + BATCH_SIZE));
   }
+
+  for (let b = 0; b < batches.length; b++) {
+    const batch = batches[b]!;
+
+    const attachments: { filename: string; content: Buffer; cid: string }[] = [];
+    for (let i = 0; i < batch.length; i++) {
+      const listing = batch[i]!;
+      if (!listing.imageUrl) continue;
+
+      const imageData = await downloadImage(listing.imageUrl);
+      if (!imageData) continue;
+
+      attachments.push({
+        filename: `listing-${i}.png`,
+        content: imageData,
+        cid: `listing-${i}`,
+      });
+    }
+
+    const separator = `<div style="border-top:1px solid #e0e0e0; margin:8px 0;"></div>`;
+    const listingsHtml = batch.map((l, i) => formatListingHtml(l, i, saveMailto)).join(separator);
+    const count = batch.length;
+    const batchLabel = batches.length > 1 ? ` (${b + 1}/${batches.length})` : "";
+
+    const html = `<div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; max-width:400px; margin:0 auto; padding:16px;">
+      <h2 style="font-size:18px; color:#1a1a1a; margin-bottom:8px;">${count} nouvelle${count > 1 ? "s" : ""} annonce${count > 1 ? "s" : ""}${batchLabel}</h2>
+      ${listingsHtml}
+    </div>`;
+
+    try {
+      await transport.sendMail({
+        from,
+        to,
+        subject: `ImmoFilter : ${count} nouvelle(s) annonce(s)${batchLabel}`,
+        html,
+        attachments,
+      });
+      console.log(`[Notify] Sent batch ${b + 1}/${batches.length} (${count} listing(s)) to ${to}`);
+      const ids = batch.map((l) => l.id).filter((id): id is number => id != null);
+      sentIds.push(...ids);
+    } catch (error) {
+      console.error(`[Notify] Error sending batch ${b + 1}/${batches.length}:`, error);
+    }
+  }
+
+  return sentIds;
 }
 
 export async function sendSavedListingEmail(listing: Listing): Promise<void> {
