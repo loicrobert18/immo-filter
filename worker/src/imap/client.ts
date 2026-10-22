@@ -1,12 +1,21 @@
 import { ImapFlow } from "imapflow";
-import { simpleParser, type Source } from "mailparser";
+import { simpleParser, type AddressObject, type Source } from "mailparser";
 
 export interface RawMail {
   from: string;
   subject: string;
   html: string;
   uid: number;
+  // To, Cc, Delivered-To and X-Original-To: used to read the "+tag" alias
+  recipients: string[];
 }
+
+function addressText(value: AddressObject | AddressObject[] | undefined): string[] {
+  if (!value) return [];
+  return (Array.isArray(value) ? value : [value]).map((address) => address.text);
+}
+
+const ALIAS_HEADERS = new Set(["delivered-to", "x-original-to"]);
 
 function getImapConfig() {
   const host = process.env["IMAP_HOST"];
@@ -38,8 +47,14 @@ export async function fetchAllMails(): Promise<RawMail[]> {
         const html =
           typeof parsed.html === "string" ? parsed.html : (parsed.textAsHtml ?? "");
 
+        const recipients = [
+          ...addressText(parsed.to),
+          ...addressText(parsed.cc),
+          ...parsed.headerLines.filter((header) => ALIAS_HEADERS.has(header.key)).map((header) => header.line),
+        ];
+
         if (from && html) {
-          mails.push({ from, subject, html, uid: message.uid });
+          mails.push({ from, subject, html, uid: message.uid, recipients });
         }
       }
     } finally {

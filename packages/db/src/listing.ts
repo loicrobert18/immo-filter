@@ -1,3 +1,8 @@
+export interface SearchTag {
+  tag: string;
+  label: string;
+}
+
 export interface Listing {
   id?: number;
   url: string;
@@ -11,4 +16,8 @@ export interface Listing {
   platform: string;
   dedupHash: string;
   detectedAt: Date;
+  // Ingestion context: the search resolved from the mail alias, stored in listing_searches
+  searchId?: number | null;
+  // Searches the listing is linked to, loaded for notification
+  searches?: SearchTag[];
 }

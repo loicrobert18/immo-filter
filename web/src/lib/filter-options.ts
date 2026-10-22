@@ -12,6 +12,9 @@ export const PERIOD_OPTIONS = {
   "30d": "30 derniers jours",
 } as const;
 
+// Value of the "search" filter for listings linked to no search; "_" can't appear in a tag
+export const UNCLASSIFIED_SEARCH = "_none";
+
 export type SortOption = keyof typeof SORT_OPTIONS;
 export type PeriodOption = keyof typeof PERIOD_OPTIONS;
 

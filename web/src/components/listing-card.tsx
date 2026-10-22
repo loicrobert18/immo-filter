@@ -1,8 +1,9 @@
-import type { ListingRow } from "@immofilter/db";
 import { formatDateTime, formatPrice, formatPricePerM2 } from "@/lib/format";
+import type { ListingWithSearches } from "@/lib/queries/listings";
 import { PlatformBadge } from "./platform-badge";
+import { SearchBadge } from "./search-badge";
 
-export function ListingCard({ listing }: { listing: ListingRow }) {
+export function ListingCard({ listing }: { listing: ListingWithSearches }) {
   const pricePerM2 = formatPricePerM2(listing.price, listing.surface);
   const details = [
     listing.surface != null ? `${listing.surface} m²` : null,
@@ -33,6 +34,13 @@ export function ListingCard({ listing }: { listing: ListingRow }) {
         {details.length > 0 && <p className="text-sm text-secondary">{details.join(" · ")}</p>}
         <p className="text-sm font-medium">{listing.city ?? "Ville inconnue"}</p>
         {listing.title && <p className="line-clamp-2 text-sm text-secondary">{listing.title}</p>}
+        {listing.searches.length > 0 && (
+          <div className="flex flex-wrap gap-1.5 pt-1">
+            {listing.searches.map((search) => (
+              <SearchBadge key={search.tag} label={search.label} />
+            ))}
+          </div>
+        )}
         <div className="mt-auto flex items-center justify-between pt-2">
           <PlatformBadge platform={listing.platform} />
           <span className="text-xs text-muted">{formatDateTime(listing.detectedAt)}</span>

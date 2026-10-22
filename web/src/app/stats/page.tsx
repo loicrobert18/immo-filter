@@ -4,7 +4,7 @@ import { RankingChart } from "@/components/charts/ranking-chart";
 import { StatTile } from "@/components/stat-tile";
 import { platformLabel } from "@/lib/filter-options";
 import { formatNumber, formatPrice, formatShortDay } from "@/lib/format";
-import { getCityPrices, getDailyCounts, getKpis, getPlatformCounts } from "@/lib/queries/stats";
+import { getCityPrices, getDailyCounts, getKpis, getPlatformCounts, getSearchCounts } from "@/lib/queries/stats";
 
 export const dynamic = "force-dynamic";
 
@@ -16,11 +16,12 @@ function shortCity(city: string): string {
 }
 
 export default async function StatsPage() {
-  const [kpis, daily, platforms, cities] = await Promise.all([
+  const [kpis, daily, platforms, cities, searchCounts] = await Promise.all([
     getKpis(),
     getDailyCounts(DAYS),
     getPlatformCounts(),
     getCityPrices(10),
+    getSearchCounts(),
   ]);
 
   const platformKeys = platforms.map((row) => row.platform);
@@ -28,6 +29,10 @@ export default async function StatsPage() {
     label: formatShortDay(entry.day),
     ...Object.fromEntries(platformKeys.map((platform) => [platform, entry.byPlatform[platform] ?? 0])),
   }));
+  const searchRows = [
+    ...searchCounts.bySearch.map((row) => ({ label: row.label, value: row.count })),
+    ...(searchCounts.unclassified > 0 ? [{ label: "Non classé", value: searchCounts.unclassified }] : []),
+  ];
   const notifiedRate = kpis.total > 0 ? Math.round((kpis.notified / kpis.total) * 100) : null;
 
   return (
@@ -98,6 +103,13 @@ export default async function StatsPage() {
               valueName="Prix médian"
               unit=" €/m²"
             />
+          )}
+        </ChartCard>
+        <ChartCard title="Annonces par recherche" subtitle="Une annonce peut appartenir à plusieurs recherches">
+          {searchCounts.bySearch.length === 0 ? (
+            <p className="text-sm text-secondary">Aucune recherche configurée.</p>
+          ) : (
+            <RankingChart rows={searchRows} valueName="Annonces" />
           )}
         </ChartCard>
       </div>

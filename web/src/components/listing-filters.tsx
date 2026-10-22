@@ -2,13 +2,15 @@
 
 import { usePathname, useRouter } from "next/navigation";
 import type { ChangeEvent, FormEvent, ReactNode } from "react";
-import { PERIOD_OPTIONS, SORT_OPTIONS, platformLabel } from "@/lib/filter-options";
+import type { SearchTag } from "@immofilter/db";
+import { PERIOD_OPTIONS, SORT_OPTIONS, UNCLASSIFIED_SEARCH, platformLabel } from "@/lib/filter-options";
 import type { ListingFilters as Filters } from "@/lib/filters";
 
 interface ListingFiltersProps {
   filters: Filters;
   cities: string[];
   platforms: string[];
+  searches: SearchTag[];
 }
 
 const inputClass =
@@ -23,7 +25,7 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
-export function ListingFilters({ filters, cities, platforms }: ListingFiltersProps) {
+export function ListingFilters({ filters, cities, platforms, searches }: ListingFiltersProps) {
   const router = useRouter();
   const pathname = usePathname();
 
@@ -51,11 +53,22 @@ export function ListingFilters({ filters, cities, platforms }: ListingFiltersPro
       onSubmit={handleSubmit}
       className="grid grid-cols-2 gap-3 rounded-lg border border-border bg-surface-1 p-4 sm:grid-cols-4 lg:grid-cols-6"
     >
-      <div className="col-span-2">
-        <Field label="Recherche">
+      <div className="col-span-2 lg:col-span-1">
+        <Field label="Mots-clés">
           <input name="q" defaultValue={filters.q} placeholder="Titre ou adresse" className={inputClass} />
         </Field>
       </div>
+      <Field label="Recherche">
+        <select name="search" defaultValue={filters.search ?? ""} onChange={handleSelectChange} className={inputClass}>
+          <option value="">Toutes</option>
+          {searches.map((search) => (
+            <option key={search.tag} value={search.tag}>
+              {search.label}
+            </option>
+          ))}
+          <option value={UNCLASSIFIED_SEARCH}>Non classé</option>
+        </select>
+      </Field>
       <Field label="Ville">
         <select name="city" defaultValue={filters.city ?? ""} onChange={handleSelectChange} className={inputClass}>
           <option value="">Toutes</option>

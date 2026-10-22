@@ -19,6 +19,7 @@ export default async function ListingsPage({ searchParams }: { searchParams: Pro
         filters={filters}
         cities={choices.cities}
         platforms={choices.platforms}
+        searches={choices.searches}
       />
 
       <p className="text-sm text-secondary">

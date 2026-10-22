@@ -5,6 +5,8 @@ import { findParser } from "./parsers/registry.js";
 import { filterNewListings, getUnnotifiedListings, markAsNotified } from "./dedup/engine.js";
 import { sendNotification } from "./notify/mailer.js";
 import { isSaveRequest, processSaveRequests } from "./save/handler.js";
+import { extractAlias } from "./imap/alias.js";
+import { loadSearchIndex } from "./searches/resolver.js";
 import type { RawMail } from "./imap/client.js";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -50,6 +52,26 @@ async function processMails(): Promise<void> {
     }
   }
 
+  // --- Resolve searches (alias → search id) ---
+  let searchIndex = new Map<string, number>();
+  try {
+    searchIndex = await loadSearchIndex();
+  } catch (error) {
+    console.error("[Pipeline] Error loading searches, listings will be unclassified:", error);
+  }
+  const baseAddress = process.env["IMAP_USER"] ?? "";
+
+  function resolveSearchId(mail: RawMail): number | null {
+    const alias = extractAlias(mail.recipients, baseAddress);
+    if (!alias) return null;
+    const searchId = searchIndex.get(alias);
+    if (searchId == null) {
+      console.warn(`[Pipeline] Alias "${alias}" has no matching search, listings left unclassified`);
+      return null;
+    }
+    return searchId;
+  }
+
   // --- Parse alert mails ---
   const allListings: Listing[] = [];
   const parsedMailUids: number[] = [];
@@ -71,8 +93,9 @@ async function processMails(): Promise<void> {
         continue;
       }
 
+      const searchId = resolveSearchId(mail);
       console.log(`[Pipeline] ${parser.platform}: parsed ${parsed.length} listing(s)`);
-      allListings.push(...parsed);
+      allListings.push(...parsed.map((listing) => ({ ...listing, searchId })));
       parsedMailUids.push(mail.uid);
     } catch (error) {
       console.error(`[Pipeline] Error parsing mail from ${mail.from}:`, error);
@@ -103,17 +126,16 @@ async function processMails(): Promise<void> {
     }
   }
 
-  // --- Notify (include previously failed notifications) ---
+  // --- Notify: unnotified rows include this run's new listings, previous failures and their search tags ---
   try {
     const unnotified = await getUnnotifiedListings();
-    const newIds = new Set(newListings.map((l) => l.id));
-    const missed = unnotified.filter((l) => !newIds.has(l.id));
-    if (missed.length > 0) {
-      console.log(`[Pipeline] ${missed.length} previously unnotified listing(s) to retry`);
-      newListings.push(...missed);
+    const retries = unnotified.length - newListings.length;
+    if (retries > 0) {
+      console.log(`[Pipeline] ${retries} previously unnotified listing(s) to retry`);
     }
+    newListings = unnotified;
   } catch (error) {
-    console.error("[Pipeline] Error fetching unnotified listings:", error);
+    console.error("[Pipeline] Error fetching unnotified listings, notifying new ones without tags:", error);
   }
 
   if (newListings.length === 0) {
