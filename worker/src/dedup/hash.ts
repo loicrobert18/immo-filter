@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import type { Listing } from "../types/listing.js";
+import type { Listing } from "@immofilter/db";
 
 export function computeDedupHash(listing: Listing): string {
   const key = [

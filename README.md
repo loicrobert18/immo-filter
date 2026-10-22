@@ -2,6 +2,8 @@
 
 Filtre et déduplique les alertes mail immobilières (SeLoger, LeBonCoin, Bien'ici, PAP). Le worker surveille une boite mail via IMAP, extrait les annonces des emails HTML, déduplique en base PostgreSQL, et forwarde uniquement les nouveaux biens par notification mail.
 
+Une interface web (Next.js) permet de parcourir toutes les annonces en base avec filtres (ville, plateforme, prix, surface, pieces, periode, recherche texte), tri et pagination, ainsi qu'un tableau de bord de statistiques (volumes par jour et par plateforme, prix median au m² par ville).
+
 ## Fonctionnement
 
 ```
@@ -43,8 +45,8 @@ Plateformes supportees :
 ### Setup
 
 ```bash
-# Cloner et installer
-cd worker && npm install
+# Installer tous les workspaces (depuis la racine)
+npm install
 
 # Configurer les credentials
 cp .env.example .env
@@ -53,11 +55,15 @@ cp .env.example .env
 # Lancer PostgreSQL
 docker compose up -d postgres
 
-# Creer la table en base
-cd worker && npx drizzle-kit push
+# Compiler le package DB partage et creer la table + index en base
+npm run build -w @immofilter/db
+npm run db:push
 
 # Lancer le worker
-npm run dev
+npm run dev -w worker
+
+# Lancer l'interface web (http://localhost:3800)
+npm run dev -w web
 ```
 
 ## Configuration
@@ -100,17 +106,44 @@ Copier `.env.example` en `.env` a la racine du projet et remplir :
 ## Commandes
 
 ```bash
-# Depuis worker/
-npm run dev       # Worker en mode watch (tsx)
-npm run build     # Compile TypeScript
-npm run start     # Lance le worker compile
-npm run test      # Lance les tests (Vitest)
-npm run lint      # ESLint
-
 # Depuis la racine
-docker compose up -d              # Lance la stack complete
+npm run build                     # Compile db, worker et web
+npm run test                      # Tests (Vitest) de tous les workspaces
+npm run db:push                   # Applique le schema Drizzle
+npm run dev -w worker             # Worker en mode watch (tsx)
+npm run dev -w web                # Interface web en mode dev
+npm run lint -w worker            # ESLint
+
+docker compose up -d              # Lance la stack complete (postgres + worker + web)
 docker compose up -d postgres     # PostgreSQL seul
 docker compose logs -f worker     # Logs du worker
+docker compose logs -f web        # Logs de l'interface web
+```
+
+## Interface web et reverse proxy
+
+Le container `web` n'ecoute que sur `127.0.0.1:3800` et n'a pas d'authentification : il doit etre expose via le reverse proxy du VPS, qui gere HTTPS et le controle d'acces. Exemple avec Caddy :
+
+```caddy
+immo.example.com {
+    basic_auth {
+        # Generer le hash avec : caddy hash-password
+        moi $2a$14$...
+    }
+    reverse_proxy 127.0.0.1:3800
+}
+```
+
+Ou avec Nginx :
+
+```nginx
+location / {
+    auth_basic           "ImmoFilter";
+    auth_basic_user_file /etc/nginx/.htpasswd-immofilter;
+    proxy_pass           http://127.0.0.1:3800;
+    proxy_set_header     Host $host;
+    proxy_set_header     X-Forwarded-Proto $scheme;
+}
 ```
 
 ## Stack technique
@@ -121,5 +154,7 @@ docker compose logs -f worker     # Logs du worker
 - **Mail** : IMAP via `imapflow`, SMTP via `nodemailer`
 - **HTML parsing** : `cheerio`
 - **Scheduling** : `node-cron` (toutes les 30 minutes)
+- **Interface web** : Next.js 15 (App Router), Tailwind CSS, Recharts
+- **Monorepo** : npm workspaces (`packages/db` partage entre worker et web)
 - **Containerisation** : Docker Compose
 - **Tests** : Vitest

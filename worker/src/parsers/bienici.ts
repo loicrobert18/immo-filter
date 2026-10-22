@@ -1,7 +1,7 @@
 import * as cheerio from "cheerio";
 import { createHash } from "node:crypto";
 import type { BaseParser } from "./base.js";
-import type { Listing } from "../types/listing.js";
+import type { Listing } from "@immofilter/db";
 
 function computeHash(city: string | null, surface: number | null, rooms: number | null, price: number | null): string {
   const key = [

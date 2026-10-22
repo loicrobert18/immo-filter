@@ -1,8 +1,6 @@
 import { eq } from "drizzle-orm";
-import { db } from "../db/client.js";
-import { listings } from "../db/schema.js";
+import { getDb, listings, type Listing } from "@immofilter/db";
 import type { RawMail } from "../imap/client.js";
-import type { Listing } from "../types/listing.js";
 import { sendSavedListingEmail } from "../notify/mailer.js";
 
 const SAVE_PATTERN = /^SAVE:(\d+)$/;
@@ -30,7 +28,7 @@ export async function processSaveRequests(mails: RawMail[]): Promise<void> {
         continue;
       }
 
-      const rows = await db
+      const rows = await getDb()
         .select()
         .from(listings)
         .where(eq(listings.id, id))

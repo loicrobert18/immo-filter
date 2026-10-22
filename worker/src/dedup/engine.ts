@@ -1,13 +1,12 @@
 import { eq, isNull } from "drizzle-orm";
-import { db } from "../db/client.js";
-import { listings } from "../db/schema.js";
-import type { Listing } from "../types/listing.js";
+import { getDb, listings, type Listing } from "@immofilter/db";
 
 export { computeDedupHash } from "./hash.js";
 
 export async function filterNewListings(
   candidates: Listing[]
 ): Promise<Listing[]> {
+  const db = getDb();
   const newListings: Listing[] = [];
 
   for (const listing of candidates) {
@@ -56,7 +55,7 @@ export async function filterNewListings(
 }
 
 export async function getUnnotifiedListings(): Promise<Listing[]> {
-  const rows = await db
+  const rows = await getDb()
     .select()
     .from(listings)
     .where(isNull(listings.notifiedAt));
@@ -80,6 +79,7 @@ export async function getUnnotifiedListings(): Promise<Listing[]> {
 export async function markAsNotified(ids: number[]): Promise<void> {
   if (ids.length === 0) return;
 
+  const db = getDb();
   for (const id of ids) {
     await db
       .update(listings)

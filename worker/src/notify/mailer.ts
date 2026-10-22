@@ -1,5 +1,5 @@
 import nodemailer from "nodemailer";
-import type { Listing } from "../types/listing.js";
+import type { Listing } from "@immofilter/db";
 
 function getTransport() {
   const host = process.env["SMTP_HOST"];

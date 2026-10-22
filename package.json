@@ -1,0 +1,15 @@
+{
+  "name": "immofilter",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "packages/*",
+    "worker",
+    "web"
+  ],
+  "scripts": {
+    "build": "npm run build -w @immofilter/db && npm run build -w worker -w web",
+    "test": "npm run test --workspaces --if-present -- --run",
+    "db:push": "npm run push -w @immofilter/db"
+  }
+}

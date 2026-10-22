@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { computeDedupHash } from "../src/dedup/hash.js";
-import type { Listing } from "../src/types/listing.js";
+import type { Listing } from "@immofilter/db";
 
 function makeListing(overrides: Partial<Listing> = {}): Listing {
   return {
