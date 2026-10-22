@@ -8,7 +8,7 @@ import { isSaveRequest, processSaveRequests } from "./save/handler.js";
 import type { RawMail } from "./imap/client.js";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import type { Listing } from "./types/listing.js";
+import type { Listing } from "@immofilter/db";
 
 const FAILED_DIR = join(process.cwd(), "data", "failed");
 
