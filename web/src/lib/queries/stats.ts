@@ -1,5 +1,5 @@
-import { and, count, desc, gt, isNotNull, sql } from "drizzle-orm";
-import { getDb, listings } from "@immofilter/db";
+import { and, count, desc, eq, gt, isNotNull, sql } from "drizzle-orm";
+import { getDb, listingSearches, listings, searches } from "@immofilter/db";
 
 const TIME_ZONE = "Europe/Paris";
 
@@ -105,4 +105,33 @@ export async function getCityPrices(limit: number): Promise<CityPrice[]> {
     .limit(limit);
 
   return rows.flatMap((row) => (row.city ? [{ ...row, city: row.city }] : []));
+}
+
+export interface SearchCount {
+  label: string;
+  count: number;
+}
+
+export interface SearchCounts {
+  bySearch: SearchCount[];
+  unclassified: number;
+}
+
+export async function getSearchCounts(): Promise<SearchCounts> {
+  const db = getDb();
+
+  const [bySearch, unclassifiedRows] = await Promise.all([
+    db
+      .select({ label: searches.label, count: count(listingSearches.listingId) })
+      .from(searches)
+      .leftJoin(listingSearches, eq(listingSearches.searchId, searches.id))
+      .groupBy(searches.id)
+      .orderBy(desc(count(listingSearches.listingId))),
+    db
+      .select({ count: count() })
+      .from(listings)
+      .where(sql`not exists (select 1 from ${listingSearches} where ${listingSearches.listingId} = ${listings.id})`),
+  ]);
+
+  return { bySearch, unclassified: unclassifiedRows[0]?.count ?? 0 };
 }

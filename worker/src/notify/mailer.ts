@@ -1,5 +1,5 @@
 import nodemailer from "nodemailer";
-import type { Listing } from "@immofilter/db";
+import type { Listing, SearchTag } from "@immofilter/db";
 
 function getTransport() {
   const host = process.env["SMTP_HOST"];
@@ -47,6 +47,19 @@ export function buildFallbackTitle(listing: Listing): string | null {
   return parts.length > 0 ? parts.join(" · ") : null;
 }
 
+function escapeHtml(value: string): string {
+  return value.replace(/[&<>"']/g, (char) => `&#${char.charCodeAt(0)};`);
+}
+
+export function formatSearchBadges(tags: SearchTag[] | undefined): string {
+  if (!tags || tags.length === 0) return "";
+  const badges = tags.map(
+    (tag) =>
+      `<span style="display:inline-block; margin:0 6px 6px 0; padding:2px 10px; background:#eef4fc; color:#1d5fae; border-radius:999px; font-size:12px; font-weight:600;">${escapeHtml(tag.label)}</span>`
+  );
+  return `<div style="margin-top:10px;">${badges.join("")}</div>`;
+}
+
 export function formatListingHtml(listing: Listing, index: number, saveMailto: string): string {
   const platformLabel = formatPlatformLabel(listing.platform);
 
@@ -90,6 +103,7 @@ export function formatListingHtml(listing: Listing, index: number, saveMailto: s
 
   return `<div style="padding:40px 0;">
     ${imageSection}
+    ${formatSearchBadges(listing.searches)}
     ${title}
     ${detailsHtml}
     ${saveButton}
@@ -97,6 +111,57 @@ export function formatListingHtml(listing: Listing, index: number, saveMailto: s
 }
 
 const BATCH_SIZE = 5;
+
+export interface SearchGroup {
+  // null = listings that came through no known alias ("Non classé")
+  search: SearchTag | null;
+  listings: Listing[];
+}
+
+// One group per search, keyed by the listing's first search; unclassified listings go last
+export function groupBySearch(items: Listing[]): SearchGroup[] {
+  const groups = new Map<string | null, SearchGroup>();
+  for (const listing of items) {
+    const search = listing.searches?.[0] ?? null;
+    const key = search?.tag ?? null;
+    const group = groups.get(key) ?? { search, listings: [] };
+    group.listings.push(listing);
+    groups.set(key, group);
+  }
+
+  return [...groups.values()].sort((a, b) => {
+    if (!a.search) return 1;
+    if (!b.search) return -1;
+    return a.search.label.localeCompare(b.search.label, "fr");
+  });
+}
+
+export interface NotificationBatch {
+  search: SearchTag | null;
+  listings: Listing[];
+  // 1-based position within its search group
+  index: number;
+  total: number;
+}
+
+export function buildBatches(items: Listing[], size: number = BATCH_SIZE): NotificationBatch[] {
+  return groupBySearch(items).flatMap((group) => {
+    const total = Math.ceil(group.listings.length / size);
+    return Array.from({ length: total }, (_, b) => ({
+      search: group.search,
+      listings: group.listings.slice(b * size, (b + 1) * size),
+      index: b + 1,
+      total,
+    }));
+  });
+}
+
+export function formatBatchSubject(batch: NotificationBatch): string {
+  const count = batch.listings.length;
+  const searchLabel = batch.search ? ` [${batch.search.label}]` : "";
+  const batchLabel = batch.total > 1 ? ` (${batch.index}/${batch.total})` : "";
+  return `ImmoFilter${searchLabel} : ${count} nouvelle(s) annonce(s)${batchLabel}`;
+}
 
 export async function sendNotification(newListings: Listing[]): Promise<number[]> {
   if (newListings.length === 0) return [];
@@ -111,15 +176,11 @@ export async function sendNotification(newListings: Listing[]): Promise<number[]
 
   const transport = getTransport();
   const sentIds: number[] = [];
-
-  // Split listings into batches
-  const batches: Listing[][] = [];
-  for (let i = 0; i < newListings.length; i += BATCH_SIZE) {
-    batches.push(newListings.slice(i, i + BATCH_SIZE));
-  }
+  const batches = buildBatches(newListings);
 
   for (let b = 0; b < batches.length; b++) {
-    const batch = batches[b]!;
+    const current = batches[b]!;
+    const { listings: batch, search, index, total } = current;
 
     const attachments: { filename: string; content: Buffer; cid: string }[] = [];
     for (let i = 0; i < batch.length; i++) {
@@ -139,10 +200,12 @@ export async function sendNotification(newListings: Listing[]): Promise<number[]
     const separator = `<div style="border-top:1px solid #e0e0e0; margin:8px 0;"></div>`;
     const listingsHtml = batch.map((l, i) => formatListingHtml(l, i, saveMailto)).join(separator);
     const count = batch.length;
-    const batchLabel = batches.length > 1 ? ` (${b + 1}/${batches.length})` : "";
+    const batchLabel = total > 1 ? ` (${index}/${total})` : "";
+    const searchHeading = `<p style="font-size:13px; color:#666; margin:0;">${search ? escapeHtml(search.label) : "Non class&eacute;"}</p>`;
 
     const html = `<div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; max-width:400px; margin:0 auto; padding:16px;">
-      <h2 style="font-size:18px; color:#1a1a1a; margin-bottom:8px;">${count} nouvelle${count > 1 ? "s" : ""} annonce${count > 1 ? "s" : ""}${batchLabel}</h2>
+      ${searchHeading}
+      <h2 style="font-size:18px; color:#1a1a1a; margin:4px 0 8px 0;">${count} nouvelle${count > 1 ? "s" : ""} annonce${count > 1 ? "s" : ""}${batchLabel}</h2>
       ${listingsHtml}
     </div>`;
 
@@ -150,7 +213,7 @@ export async function sendNotification(newListings: Listing[]): Promise<number[]
       await transport.sendMail({
         from,
         to,
-        subject: `ImmoFilter : ${count} nouvelle(s) annonce(s)${batchLabel}`,
+        subject: formatBatchSubject(current),
         html,
         attachments,
       });

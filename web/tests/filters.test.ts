@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { PgDialect } from "drizzle-orm/pg-core";
+import { UNCLASSIFIED_SEARCH } from "@/lib/filter-options";
 import { buildOrderBy, buildWhere, parseListingFilters, type ListingFilters } from "@/lib/filters";
 
 const dialect = new PgDialect();
@@ -14,6 +15,7 @@ describe("parseListingFilters", () => {
       q: undefined,
       city: undefined,
       platform: undefined,
+      search: undefined,
       priceMin: undefined,
       priceMax: undefined,
       surfaceMin: undefined,
@@ -84,6 +86,26 @@ describe("buildWhere", () => {
     const query = dialect.sqlToQuery(buildWhere(defaults({ period: "7d" }), now)!);
     expect(query.sql).toContain('"listings"."detected_at" >= $1');
     expect(query.params).toEqual([new Date("2026-10-14T12:00:00Z").toISOString()]);
+  });
+});
+
+describe("buildWhere search filter", () => {
+  it("keeps listings linked to the given tag", () => {
+    const query = dialect.sqlToQuery(buildWhere(defaults({ search: "lyon" }))!);
+    expect(query.sql).toContain("exists (select 1 from \"listing_searches\"");
+    expect(query.sql).toContain('"searches"."tag" = $1');
+    expect(query.sql).not.toContain("not exists");
+    expect(query.params).toEqual(["lyon"]);
+  });
+
+  it("keeps unclassified listings for the sentinel value", () => {
+    const query = dialect.sqlToQuery(buildWhere(defaults({ search: UNCLASSIFIED_SEARCH }))!);
+    expect(query.sql).toContain("not exists (select 1 from \"listing_searches\"");
+    expect(query.params).toEqual([]);
+  });
+
+  it("ignores an empty search param", () => {
+    expect(parseListingFilters({ search: "  " }).search).toBeUndefined();
   });
 });
 

@@ -1,6 +1,6 @@
 # ImmoFilter
 
-Système de déduplication d'annonces immobilières. Reçoit les alertes mail de plateformes (SeLoger, LeBonCoin, Bien'ici, PAP…), déduplique, et forwarde uniquement les nouveaux biens par mail. Une interface web Next.js (lecture seule) permet de parcourir les annonces et de consulter des statistiques.
+Système de déduplication d'annonces immobilières. Reçoit les alertes mail de plateformes (SeLoger, LeBonCoin, Bien'ici, PAP…), déduplique, et forwarde uniquement les nouveaux biens par mail. Plusieurs recherches peuvent être suivies en parallèle (ex. une par ville), chacune identifiée par un tag. Une interface web Next.js permet de parcourir les annonces, de consulter des statistiques et de gérer les recherches.
 
 ## Stack
 
@@ -9,7 +9,7 @@ Système de déduplication d'annonces immobilières. Reçoit les alertes mail de
 - **ORM** : Drizzle ORM avec PostgreSQL
 - **Mail** : IMAP via `imapflow`, SMTP via `nodemailer`
 - **HTML parsing** : `cheerio`
-- **Scheduling** : `node-cron` (toutes les 30 minutes)
+- **Scheduling** : `node-cron` (tous les jours à 8 h, plus une exécution au démarrage)
 - **Containerisation** : Docker Compose (worker + postgres)
 - **Tests** : Vitest
 - **Monorepo** : npm workspaces (`packages/db`, `worker`, `web`), lockfile unique à la racine
@@ -27,34 +27,41 @@ immofilter/
 │   └── db/                       # @immofilter/db : partagé par worker et web
 │       ├── drizzle.config.ts
 │       └── src/
-│           ├── schema.ts         # schéma Drizzle (table listings + index)
+│           ├── schema.ts         # schéma Drizzle (listings, searches, listing_searches)
 │           ├── client.ts         # getDb() : connexion paresseuse, singleton
-│           ├── listing.ts        # type Listing normalisé
+│           ├── listing.ts        # types Listing normalisé et SearchTag
 │           └── index.ts
 ├── worker/
 │   ├── Dockerfile
 │   ├── src/
 │   │   ├── index.ts              # entrypoint, scheduler cron
 │   │   ├── imap/client.ts        # connexion IMAP, fetch nouveaux mails
+│   │   ├── imap/alias.ts         # extraction du tag depuis l'alias +tag des destinataires
+│   │   ├── searches/resolver.ts  # index tag → id de recherche
 │   │   ├── parsers/              # base.ts, registry.ts, un fichier par plateforme
 │   │   ├── dedup/engine.ts       # déduplication URL exacte + hash flou
-│   │   ├── notify/mailer.ts      # envoi SMTP vers boîte perso
+│   │   ├── notify/mailer.ts      # envoi SMTP vers boîte perso, mails groupés par recherche
 │   │   └── save/handler.ts       # traitement des mails SAVE:<id>
 │   └── tests/
 │       ├── parsers/              # un fichier de test par parser
+│       ├── alias.test.ts
+│       ├── notify.test.ts
 │       └── dedup.test.ts
 ├── web/
 │   ├── Dockerfile
 │   ├── next.config.ts            # output standalone
 │   ├── src/
-│   │   ├── app/                  # listings/page.tsx, stats/page.tsx, layout.tsx
+│   │   ├── app/                  # listings/, stats/, searches/ (CRUD des recherches), layout.tsx
 │   │   ├── components/           # cartes, filtres, pagination, charts/
 │   │   └── lib/
 │   │       ├── filter-options.ts # constantes partagées client/serveur (sans dépendance DB)
 │   │       ├── filters.ts        # parseListingFilters (Zod) + buildWhere/buildOrderBy
+│   │       ├── search-schema.ts  # validation Zod d'une recherche + aliasAddress (sans dépendance DB)
+│   │       ├── search-form-state.ts # état du formulaire, importable côté client (sans Zod)
+│   │       ├── actions/          # Server Actions (searches.ts : create/update/delete)
 │   │       ├── format.ts
-│   │       └── queries/          # requêtes Drizzle (listings.ts, stats.ts)
-│   └── tests/filters.test.ts
+│   │       └── queries/          # requêtes Drizzle (listings.ts, stats.ts, searches.ts)
+│   └── tests/                    # filters.test.ts, search-schema.test.ts
 ├── .env.example
 └── .gitignore
 ```
@@ -96,6 +103,16 @@ Le `ParserRegistry` route automatiquement par le header `From:` du mail. Ajouter
 1. **URL exacte** : si l'URL de l'annonce existe déjà en base → doublon
 2. **Hash flou** : `sha256(city + surface + rooms + Math.floor(price / 1000))` — couvre le cross-plateforme avec tolérance ±999€ sur le prix
 
+### Recherches multiples (tag = alias mail)
+
+- Une recherche = une ligne `searches` (`tag` unique, `label` affiché). Son adresse d'alerte est `IMAP_USER` avec l'alias `+tag` (ex. `moi+lyon@gmail.com`), à renseigner comme e-mail lors de la création de l'alerte sur la plateforme.
+- Le worker lit l'alias dans `To`, `Cc`, `Delivered-To` et `X-Original-To` (`imap/alias.ts`), puis rattache les annonces du mail à la recherche via la table de liaison `listing_searches` (N-N).
+- La déduplication reste globale : un doublon reçu par un autre alias n'est pas renotifié mais gagne le tag de cette recherche.
+- Sans alias, ou avec un alias inconnu (warning loggé), l'annonce est stockée et notifiée sans tag : « Non classé ».
+- Les notifications sont regroupées par recherche (« Non classé » en dernier), par lots de 5, avec le label dans le sujet (`ImmoFilter [Lyon] : …`).
+- Supprimer une recherche supprime ses liaisons (`ON DELETE CASCADE`), jamais les annonces. Changer un tag change l'adresse d'alerte.
+- Filtre web `?search=<tag>`, ou `?search=_none` (`UNCLASSIFIED_SEARCH`) pour les non classées.
+
 ### Type Listing normalisé
 
 ```typescript
@@ -109,6 +126,8 @@ interface Listing {
   platform: string;
   dedupHash: string;
   detectedAt: Date;
+  searchId?: number | null;   // contexte d'ingestion (alias du mail), stocké dans listing_searches
+  searches?: SearchTag[];     // recherches liées, chargées pour la notification
 }
 ```
 
@@ -119,6 +138,7 @@ interface Listing {
 - Accès DB toujours via `getDb()` appelé dans la fonction (jamais au chargement du module) pour que `next build` fonctionne sans `DATABASE_URL`
 - Web : ne jamais importer `@immofilter/db` (ni `lib/filters.ts`) depuis un Client Component — les constantes partagées vont dans `lib/filter-options.ts`
 - Web : l'état des filtres vit dans l'URL (`searchParams`), les pages sont `force-dynamic`
+- Web : les seules écritures en base sont les Server Actions de `lib/actions/searches.ts` (gestion des recherches) ; les annonces restent en lecture seule. Un Client Component peut importer une Server Action, mais pas le module `@immofilter/db` lui-même
 - Gestion d'erreurs : chaque étape du pipeline (IMAP fetch, parse, dedup, notify) doit catcher ses erreurs individuellement et logger sans interrompre le traitement des autres mails
 - Les credentials sont dans `.env`, jamais hardcodés, jamais commités
 - Les mails HTML bruts parsés en erreur doivent être loggés dans un dossier `/data/failed/` pour debug des changements de template

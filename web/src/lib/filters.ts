@@ -1,7 +1,7 @@
 import { and, desc, eq, gte, ilike, lte, or, sql, type SQL } from "drizzle-orm";
 import { z } from "zod";
-import { listings } from "@immofilter/db";
-import { PERIOD_OPTIONS, SORT_OPTIONS, type PeriodOption, type SortOption } from "./filter-options";
+import { listingSearches, listings, searches } from "@immofilter/db";
+import { PERIOD_OPTIONS, SORT_OPTIONS, UNCLASSIFIED_SEARCH, type PeriodOption, type SortOption } from "./filter-options";
 
 export type SearchParams = Record<string, string | string[] | undefined>;
 
@@ -28,6 +28,7 @@ const filtersSchema = z.object({
   q: optionalText,
   city: optionalText,
   platform: optionalText,
+  search: optionalText,
   priceMin: optionalNumber,
   priceMax: optionalNumber,
   surfaceMin: optionalNumber,
@@ -60,6 +61,15 @@ export function buildWhere(filters: ListingFilters, now: Date = new Date()): SQL
   }
   if (filters.city) conditions.push(eq(listings.city, filters.city));
   if (filters.platform) conditions.push(eq(listings.platform, filters.platform));
+  if (filters.search === UNCLASSIFIED_SEARCH) {
+    conditions.push(
+      sql`not exists (select 1 from ${listingSearches} where ${listingSearches.listingId} = ${listings.id})`
+    );
+  } else if (filters.search) {
+    conditions.push(
+      sql`exists (select 1 from ${listingSearches} inner join ${searches} on ${searches.id} = ${listingSearches.searchId} where ${listingSearches.listingId} = ${listings.id} and ${searches.tag} = ${filters.search})`
+    );
+  }
   if (filters.priceMin != null) conditions.push(gte(listings.price, filters.priceMin));
   if (filters.priceMax != null) conditions.push(lte(listings.price, filters.priceMax));
   if (filters.surfaceMin != null) conditions.push(gte(listings.surface, filters.surfaceMin));
