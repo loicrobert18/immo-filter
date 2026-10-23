@@ -163,15 +163,15 @@ export function formatBatchSubject(batch: NotificationBatch): string {
   return `ImmoFilter${searchLabel} : ${count} nouvelle(s) annonce(s)${batchLabel}`;
 }
 
-export async function sendNotification(newListings: Listing[]): Promise<number[]> {
+// `to` comes from the web settings, falling back to NOTIFY_TO
+export async function sendNotification(newListings: Listing[], to: string | null): Promise<number[]> {
   if (newListings.length === 0) return [];
 
-  const to = process.env["NOTIFY_TO"];
   const from = process.env["NOTIFY_FROM"];
   const saveMailto = process.env["IMAP_USER"] ?? from ?? "";
 
   if (!to || !from) {
-    throw new Error("NOTIFY_TO and NOTIFY_FROM are required");
+    throw new Error("A recipient (settings or NOTIFY_TO) and NOTIFY_FROM are required");
   }
 
   const transport = getTransport();
@@ -228,12 +228,11 @@ export async function sendNotification(newListings: Listing[]): Promise<number[]
   return sentIds;
 }
 
-export async function sendSavedListingEmail(listing: Listing): Promise<void> {
-  const to = process.env["NOTIFY_TO"];
+export async function sendSavedListingEmail(listing: Listing, to: string | null): Promise<void> {
   const from = process.env["NOTIFY_FROM"];
 
   if (!to || !from) {
-    throw new Error("NOTIFY_TO and NOTIFY_FROM are required");
+    throw new Error("A recipient (settings or NOTIFY_TO) and NOTIFY_FROM are required");
   }
 
   const attachments: { filename: string; content: Buffer; cid: string }[] = [];

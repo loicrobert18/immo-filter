@@ -1,4 +1,4 @@
-import { eq, isNull, sql } from "drizzle-orm";
+import { and, eq, gte, isNull, sql } from "drizzle-orm";
 import { getDb, listings, listingSearches, searches, type Listing, type SearchTag } from "@immofilter/db";
 
 export { computeDedupHash } from "./hash.js";
@@ -61,8 +61,9 @@ export async function filterNewListings(
   return newListings;
 }
 
-// Includes the searches each listing is linked to, so the mailer can group and tag them
-export async function getUnnotifiedListings(): Promise<Listing[]> {
+// Includes the searches each listing is linked to, so the mailer can group and tag them.
+// Listings detected before `since` (while notifications were disabled) are left out for good.
+export async function getUnnotifiedListings(since: Date | null = null): Promise<Listing[]> {
   const rows = await getDb()
     .select({
       listing: listings,
@@ -75,7 +76,7 @@ export async function getUnnotifiedListings(): Promise<Listing[]> {
     .from(listings)
     .leftJoin(listingSearches, eq(listingSearches.listingId, listings.id))
     .leftJoin(searches, eq(searches.id, listingSearches.searchId))
-    .where(isNull(listings.notifiedAt))
+    .where(and(isNull(listings.notifiedAt), since ? gte(listings.detectedAt, since) : undefined))
     .groupBy(listings.id)
     .orderBy(listings.id);
 

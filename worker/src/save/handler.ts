@@ -14,7 +14,7 @@ function extractListingId(mail: RawMail): number | null {
   return match ? Number(match[1]) : null;
 }
 
-export async function processSaveRequests(mails: RawMail[]): Promise<void> {
+export async function processSaveRequests(mails: RawMail[], to: string | null): Promise<void> {
   const saveRequests = mails.filter(isSaveRequest);
   if (saveRequests.length === 0) return;
 
@@ -55,7 +55,7 @@ export async function processSaveRequests(mails: RawMail[]): Promise<void> {
         detectedAt: row.detectedAt,
       };
 
-      await sendSavedListingEmail(listing);
+      await sendSavedListingEmail(listing, to);
       console.log(`[Save] Sent saved listing: id=${id}`);
     } catch (error) {
       console.error("[Save] Error processing save request:", error);

@@ -1,4 +1,5 @@
-import { pgTable, text, integer, real, timestamp, varchar, serial, index, primaryKey } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
+import { pgTable, text, integer, real, timestamp, varchar, serial, index, primaryKey, boolean, check } from "drizzle-orm/pg-core";
 
 export const listings = pgTable(
   "listings",
@@ -54,3 +55,20 @@ export const listingSearches = pgTable(
     index("listing_searches_search_id_idx").on(table.searchId),
   ]
 );
+
+// Single row (id = 1) edited from the web /settings page and read by the worker
+export const settings = pgTable(
+  "settings",
+  {
+    id: integer("id").primaryKey().default(1),
+    notificationsEnabled: boolean("notifications_enabled").notNull().default(true),
+    // Listings detected before this date are never mailed (set when notifications are switched back on)
+    notificationsResumedAt: timestamp("notifications_resumed_at", { withTimezone: true }),
+    // Overrides NOTIFY_TO when set
+    notifyTo: text("notify_to"),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [check("settings_single_row", sql`${table.id} = 1`)]
+);
+
+export type SettingsRow = typeof settings.$inferSelect;

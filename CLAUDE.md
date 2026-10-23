@@ -27,7 +27,8 @@ immofilter/
 │   └── db/                       # @immofilter/db : partagé par worker et web
 │       ├── drizzle.config.ts
 │       └── src/
-│           ├── schema.ts         # schéma Drizzle (listings, searches, listing_searches)
+│           ├── schema.ts         # schéma Drizzle (listings, searches, listing_searches, settings)
+│           ├── settings.ts       # getSettings() (ligne unique ou valeurs par défaut), resolveNotifyTo()
 │           ├── client.ts         # getDb() : connexion paresseuse, singleton
 │           ├── listing.ts        # types Listing normalisé et SearchTag
 │           └── index.ts
@@ -51,14 +52,15 @@ immofilter/
 │   ├── Dockerfile
 │   ├── next.config.ts            # output standalone
 │   ├── src/
-│   │   ├── app/                  # listings/, stats/, searches/ (CRUD des recherches), layout.tsx
+│   │   ├── app/                  # listings/, stats/, searches/ (CRUD des recherches), settings/, layout.tsx
 │   │   ├── components/           # cartes, filtres, pagination, charts/
 │   │   └── lib/
 │   │       ├── filter-options.ts # constantes partagées client/serveur (sans dépendance DB)
 │   │       ├── filters.ts        # parseListingFilters (Zod) + buildWhere/buildOrderBy
 │   │       ├── search-schema.ts  # validation Zod d'une recherche + aliasAddress (sans dépendance DB)
 │   │       ├── search-form-state.ts # état du formulaire, importable côté client (sans Zod)
-│   │       ├── actions/          # Server Actions (searches.ts : create/update/delete)
+│   │       ├── settings-schema.ts / settings-form-state.ts # même découpage pour la configuration
+│   │       ├── actions/          # Server Actions (searches.ts, settings.ts)
 │   │       ├── format.ts
 │   │       └── queries/          # requêtes Drizzle (listings.ts, stats.ts, searches.ts)
 │   └── tests/                    # filters.test.ts, search-schema.test.ts
@@ -113,6 +115,13 @@ Le `ParserRegistry` route automatiquement par le header `From:` du mail. Ajouter
 - Supprimer une recherche supprime ses liaisons (`ON DELETE CASCADE`), jamais les annonces. Changer un tag change l'adresse d'alerte.
 - Filtre web `?search=<tag>`, ou `?search=_none` (`UNCLASSIFIED_SEARCH`) pour les non classées.
 
+### Configuration (page `/settings`)
+
+- Table `settings` à ligne unique (`id = 1`, contrainte `CHECK`), créée au premier enregistrement ; sans ligne, `getSettings()` renvoie `DEFAULT_SETTINGS`.
+- `notificationsEnabled = false` : le worker relève, déduplique et stocke, mais n'envoie aucun mail d'annonces (les mails `SAVE:` restent traités).
+- À la réactivation, `notificationsResumedAt` passe à maintenant : les annonces détectées avant ne sont jamais envoyées (`getUnnotifiedListings(since)`).
+- `notifyTo` remplace `NOTIFY_TO` s'il est renseigné (annonces et mails sauvegardés). Si les réglages ne peuvent pas être lus, le worker n'envoie pas d'annonces ce passage-là.
+
 ### Type Listing normalisé
 
 ```typescript
@@ -138,7 +147,7 @@ interface Listing {
 - Accès DB toujours via `getDb()` appelé dans la fonction (jamais au chargement du module) pour que `next build` fonctionne sans `DATABASE_URL`
 - Web : ne jamais importer `@immofilter/db` (ni `lib/filters.ts`) depuis un Client Component — les constantes partagées vont dans `lib/filter-options.ts`
 - Web : l'état des filtres vit dans l'URL (`searchParams`), les pages sont `force-dynamic`
-- Web : les seules écritures en base sont les Server Actions de `lib/actions/searches.ts` (gestion des recherches) ; les annonces restent en lecture seule. Un Client Component peut importer une Server Action, mais pas le module `@immofilter/db` lui-même
+- Web : les seules écritures en base sont les Server Actions de `lib/actions/` (recherches et configuration) ; les annonces restent en lecture seule. Un Client Component peut importer une Server Action, mais pas le module `@immofilter/db` lui-même
 - Gestion d'erreurs : chaque étape du pipeline (IMAP fetch, parse, dedup, notify) doit catcher ses erreurs individuellement et logger sans interrompre le traitement des autres mails
 - Les credentials sont dans `.env`, jamais hardcodés, jamais commités
 - Les mails HTML bruts parsés en erreur doivent être loggés dans un dossier `/data/failed/` pour debug des changements de template

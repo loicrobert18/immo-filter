@@ -10,7 +10,7 @@ import { loadSearchIndex } from "./searches/resolver.js";
 import type { RawMail } from "./imap/client.js";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import type { Listing } from "@immofilter/db";
+import { getSettings, resolveNotifyTo, type AppSettings, type Listing } from "@immofilter/db";
 
 const FAILED_DIR = join(process.cwd(), "data", "failed");
 
@@ -39,13 +39,24 @@ async function processMails(): Promise<void> {
   const alertMails = mails.filter((m) => !isSaveRequest(m));
   console.log(`[Pipeline] Fetched ${mails.length} mail(s): ${alertMails.length} alert(s), ${saveMails.length} save(s)`);
 
+  // Settings drive the recipient and whether listings are mailed at all
+  let settings: AppSettings | null = null;
+  try {
+    settings = await getSettings();
+  } catch (error) {
+    console.error("[Pipeline] Error loading settings, listing notifications skipped this run:", error);
+  }
+  const notifyTo = settings
+    ? resolveNotifyTo(settings, process.env["NOTIFY_TO"])
+    : (process.env["NOTIFY_TO"] ?? null);
+
   // Track UIDs of successfully processed mails for deletion
   const processedUids: number[] = [];
 
   // --- Process SAVE requests ---
   if (saveMails.length > 0) {
     try {
-      await processSaveRequests(saveMails);
+      await processSaveRequests(saveMails, notifyTo);
       processedUids.push(...saveMails.map((m) => m.uid));
     } catch (error) {
       console.error("[Pipeline] Error processing save requests:", error);
@@ -127,8 +138,13 @@ async function processMails(): Promise<void> {
   }
 
   // --- Notify: unnotified rows include this run's new listings, previous failures and their search tags ---
+  if (!settings?.notificationsEnabled) {
+    if (settings) console.log("[Pipeline] Listing notifications disabled in settings, nothing sent");
+    return;
+  }
+
   try {
-    const unnotified = await getUnnotifiedListings();
+    const unnotified = await getUnnotifiedListings(settings.notificationsResumedAt);
     const retries = unnotified.length - newListings.length;
     if (retries > 0) {
       console.log(`[Pipeline] ${retries} previously unnotified listing(s) to retry`);
@@ -146,7 +162,7 @@ async function processMails(): Promise<void> {
   console.log(`[Pipeline] ${newListings.length} new listing(s) to notify`);
 
   try {
-    const sentIds = await sendNotification(newListings);
+    const sentIds = await sendNotification(newListings, notifyTo);
     await markAsNotified(sentIds);
   } catch (error) {
     console.error("[Pipeline] Error sending notification:", error);

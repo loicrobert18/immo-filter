@@ -7,6 +7,7 @@ const LINKS = [
   { href: "/listings", label: "Annonces" },
   { href: "/stats", label: "Statistiques" },
   { href: "/searches", label: "Recherches" },
+  { href: "/settings", label: "Configuration" },
 ];
 
 export function MainNav() {
